@@ -5,6 +5,7 @@ import com.outsera.outsera_backend.service.MovieService;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -22,11 +23,14 @@ public class CarregarCsv {
 
     private final MovieService movieService;
 
+    @Value("${csv.file.path:csv/Movielist.csv}")
+    private String csvFilePath;
+
     @PostConstruct
     public void carregarDados() {
 
         List<Filme> filmes = new ArrayList<>();
-        ClassPathResource recurso = new ClassPathResource("csv/Movielist.csv");
+        ClassPathResource recurso = new ClassPathResource(csvFilePath);
 
         try (BufferedReader leitor = new BufferedReader(new InputStreamReader(recurso.getInputStream(),
                 StandardCharsets.UTF_8))) {
