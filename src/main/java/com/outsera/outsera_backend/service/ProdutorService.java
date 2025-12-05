@@ -2,28 +2,34 @@ package com.outsera.outsera_backend.service;
 
 import com.outsera.outsera_backend.dto.IntervaloDTO;
 import com.outsera.outsera_backend.dto.IntervaloRetornoDTO;
-import com.outsera.outsera_backend.model.Filme;
+import com.outsera.outsera_backend.dto.ProdutorVitoriaDTO;
+import com.outsera.outsera_backend.repository.FilmeRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class ProdutorService {
 
-    private static final String REGEX_SEPARADOR_PRODUTOR = "[;,]|\\s+and\\s+";
-
-    private final MovieService movieService;
+    private final FilmeRepository filmeRepository;
 
     public IntervaloRetornoDTO obterIntervalosProdutor() {
 
-        List<Filme> filmesVencedores = movieService.buscarTodosVencedores();
+        List<ProdutorVitoriaDTO> vitorias = filmeRepository.findVitoriasPorProdutor().stream()
+                .map(row -> new ProdutorVitoriaDTO((String) row[0], (Integer) row[1]))
+                .toList();
 
-        Map<String, List<Integer>> anosVitoriaPorProdutor = agruparAnosVitoriaPorProdutor(filmesVencedores);
+        if (vitorias.isEmpty()) {
 
-        List<IntervaloDTO> intervalos = calcularTodosIntervalos(anosVitoriaPorProdutor);
+            return IntervaloRetornoDTO.builder()
+                    .min(Collections.emptyList())
+                    .max(Collections.emptyList())
+                    .build();
+        }
+
+        List<IntervaloDTO> intervalos = calcularIntervalos(vitorias);
 
         if (intervalos.isEmpty()) {
 
@@ -33,112 +39,70 @@ public class ProdutorService {
                     .build();
         }
 
-        return construirResultadoIntervalo(intervalos);
+        return construirResultado(intervalos);
     }
 
-    private Map<String, List<Integer>> agruparAnosVitoriaPorProdutor(List<Filme> filmes) {
-
-        Map<String, List<Integer>> vitoriasProdutor = new HashMap<>();
-
-        for (Filme filme : filmes) {
-
-            List<String> produtores = extrairProdutores(filme.getProdutor());
-
-            for (String produtor : produtores) {
-
-                vitoriasProdutor.computeIfAbsent(produtor, k -> new ArrayList<>())
-                        .add(filme.getAno());
-            }
-        }
-
-        return vitoriasProdutor;
-    }
-
-    private List<String> extrairProdutores(String produtorString) {
-
-        return Arrays.stream(produtorString.split(REGEX_SEPARADOR_PRODUTOR))
-                .map(String::trim)
-                .filter(produtor -> !produtor.isEmpty())
-                .collect(Collectors.toList());
-    }
-
-    private List<IntervaloDTO> calcularTodosIntervalos(Map<String, List<Integer>> anosVitoriaPorProdutor) {
-
-        List<IntervaloDTO> todosIntervalos = new ArrayList<>();
-
-        for (Map.Entry<String, List<Integer>> entry : anosVitoriaPorProdutor.entrySet()) {
-
-            if (entry.getValue().size() >= 2) {
-
-                String produtor = entry.getKey();
-                List<Integer> anos = entry.getValue();
-
-                List<IntervaloDTO> intervalosDoProdutor = calcularIntervalosProdutor(produtor, anos);
-                todosIntervalos.addAll(intervalosDoProdutor);
-            }
-        }
-
-        return todosIntervalos;
-    }
-
-    private List<IntervaloDTO> calcularIntervalosProdutor(String produtor, List<Integer> anos) {
-
-        List<Integer> anosOrdenados = new ArrayList<>(anos);
-        Collections.sort(anosOrdenados);
+    private List<IntervaloDTO> calcularIntervalos(List<ProdutorVitoriaDTO> vitorias) {
 
         List<IntervaloDTO> intervalos = new ArrayList<>();
+        Map<String, Integer> ultimoAnoPorProdutor = new HashMap<>();
 
-        for (int i = 0; i < anosOrdenados.size() - 1; i++) {
+        for (ProdutorVitoriaDTO vitoria : vitorias) {
 
-            int anoAnterior = anosOrdenados.get(i);
-            int anoSeguinte = anosOrdenados.get(i + 1);
-            int intervalo = anoSeguinte - anoAnterior;
+            String produtor = vitoria.nomeProdutor();
+            Integer anoAtual = vitoria.ano();
 
-            intervalos.add(IntervaloDTO.builder()
-                    .producer(produtor)
-                    .interval(intervalo)
-                    .previousWin(anoAnterior)
-                    .followingWin(anoSeguinte)
-                    .build());
+            if (ultimoAnoPorProdutor.containsKey(produtor)) {
+
+                Integer anoAnterior = ultimoAnoPorProdutor.get(produtor);
+
+                intervalos.add(IntervaloDTO.builder()
+                        .producer(produtor)
+                        .interval(anoAtual - anoAnterior)
+                        .previousWin(anoAnterior)
+                        .followingWin(anoAtual)
+                        .build());
+            }
+
+            ultimoAnoPorProdutor.put(produtor, anoAtual);
         }
 
         return intervalos;
     }
 
-    private IntervaloRetornoDTO construirResultadoIntervalo(List<IntervaloDTO> intervalos) {
+    private IntervaloRetornoDTO construirResultado(List<IntervaloDTO> intervalos) {
 
-        int intervaloMinimo = encontrarIntervaloMinimo(intervalos);
-        int intervaloMaximo = encontrarIntervaloMaximo(intervalos);
+        int min = Integer.MAX_VALUE;
+        int max = Integer.MIN_VALUE;
 
-        List<IntervaloDTO> intervalosMinimos = filtrarPorIntervalo(intervalos, intervaloMinimo);
-        List<IntervaloDTO> intervalosMaximos = filtrarPorIntervalo(intervalos, intervaloMaximo);
+        for (IntervaloDTO intervalo : intervalos) {
+
+            min = Math.min(min, intervalo.getInterval());
+            max = Math.max(max, intervalo.getInterval());
+        }
+
+        List<IntervaloDTO> intervalosMinimos = new ArrayList<>();
+        List<IntervaloDTO> intervalosMaximos = new ArrayList<>();
+
+        final int intervaloMinimo = min;
+        final int intervaloMaximo = max;
+
+        for (IntervaloDTO intervalo : intervalos) {
+
+            if (intervalo.getInterval().equals(intervaloMinimo)) {
+
+                intervalosMinimos.add(intervalo);
+            }
+
+            if (intervalo.getInterval().equals(intervaloMaximo)) {
+
+                intervalosMaximos.add(intervalo);
+            }
+        }
 
         return IntervaloRetornoDTO.builder()
                 .min(intervalosMinimos)
                 .max(intervalosMaximos)
                 .build();
-    }
-
-    private int encontrarIntervaloMinimo(List<IntervaloDTO> intervalos) {
-
-        return intervalos.stream()
-                .mapToInt(IntervaloDTO::getInterval)
-                .min()
-                .orElseThrow();
-    }
-
-    private int encontrarIntervaloMaximo(List<IntervaloDTO> intervalos) {
-
-        return intervalos.stream()
-                .mapToInt(IntervaloDTO::getInterval)
-                .max()
-                .orElseThrow();
-    }
-
-    private List<IntervaloDTO> filtrarPorIntervalo(List<IntervaloDTO> intervalos, int intervaloAlvo) {
-
-        return intervalos.stream()
-                .filter(intervalo -> intervalo.getInterval() == intervaloAlvo)
-                .collect(Collectors.toList());
     }
 }

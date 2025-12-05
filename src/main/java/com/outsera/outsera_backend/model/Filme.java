@@ -3,6 +3,9 @@ package com.outsera.outsera_backend.model;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.util.HashSet;
+import java.util.Set;
+
 @Entity
 @Getter
 @Setter
@@ -30,4 +33,13 @@ public class Filme {
 
     @Column(name = "vencedor")
     private Boolean vencedor;
+
+    @ManyToMany(fetch = FetchType.LAZY, cascade = {CascadeType.PERSIST, CascadeType.MERGE})
+    @JoinTable(
+            name = "filme_produtor",
+            joinColumns = @JoinColumn(name = "filme_id"),
+            inverseJoinColumns = @JoinColumn(name = "produtor_id")
+    )
+    @Builder.Default
+    private Set<Produtor> produtores = new HashSet<>();
 }
